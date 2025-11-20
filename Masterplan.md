@@ -72,10 +72,12 @@ graph TB
   - [x] Standardisiertes Error-Handling und Progress-Tracking - LoadError, LoadProgress, callbacks
   - [x] Memory-Efficient Streaming für große Dateien - Iterator-based chunk processing with configurable buffer
 
-- [ ] **Woche 3**: Implementierung des Document Processing Service
-  - Core-Service in `src/pygpt_net/core/document_processor.py`
-  - Integration mit bestehenden Loadern
-  - Unit-Tests mit >90% Coverage
+- [x] **Woche 3**: Implementierung des Document Processing Service ✅
+  - [x] Core-Service in `src/pygpt_net/core/document_processing_service.py` (607 lines)
+  - [x] Integration mit bestehenden Loadern über LoaderRegistry
+  - [x] Async loading mit ThreadPoolExecutor (4 workers)
+  - [x] LRU Cache für Metadaten (500 entries, thread-safe)
+  - [ ] Unit-Tests mit >90% Coverage (pending)
 
 **C2 - API Integration Specialist**
 
@@ -100,10 +102,10 @@ graph TB
   - [x] Progressive Loading UI - Skeleton screens, chunk-based rendering, progress callbacks specified
   - [x] Error-State-Handling - Non-blocking error panels with suggestions, inline error display
 
-- [ ] **Woche 3**: Implementierung des neuen Document Viewer Widgets
-  - Ersetzung des bestehenden File Explorers
-  - Integration mit dem Backend Processing Service
-  - Performance-Optimierung für große Verzeichnisse
+- [x] **Woche 3**: Implementierung des neuen Document Viewer Widgets ✅
+  - [x] Ersetzung des bestehenden File Explorers
+  - [x] Integration mit dem Backend Processing Service über DocumentProcessingService
+  - [x] Performance-Optimierung für große Verzeichnisse (LazyFileSystemModel, virtual scrolling)
 
 **B2 - Qt/PySide Specialist**
 
@@ -112,10 +114,11 @@ graph TB
   - [x] Implementierung von Lazy Loading für große Dateilisten - VirtualScrollTreeView with FETCH_DISTANCE strategy
   - [x] Memory-Management für UI-Komponenten - LRUMetadataCache with configurable size limits
 
-- [ ] **Woche 3**: Qt-Performance-Implementierung
-  - Implementierung der LazyFileSystemModel
-  - Implementierung von FileLoaderThread
-  - Benchmarking und Optimization
+- [x] **Woche 3**: Qt-Performance-Implementierung ✅
+  - [x] Implementierung der LazyFileSystemModel (749 lines)
+  - [x] Implementierung von FileLoaderThread (434 lines)
+  - [x] Integration von FileLoaderManager für C3-B2 Verbindung (326 lines)
+  - [ ] Benchmarking und Optimization (pending)
 
 ### **UX Design Team - Verantwortlichkeiten**
 

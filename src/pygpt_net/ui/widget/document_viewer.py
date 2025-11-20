@@ -767,7 +767,437 @@ class DocumentViewerHeader(QWidget):
         return self._is_loading
 
 
-# Example usage and testing
+class DocumentViewer(QWidget):
+    """
+    Complete Document Viewer Widget
+    Phase 1 Week 3 - B1 UI Component Engineer (Continued)
+
+    Main document viewer that integrates DocumentViewerHeader with content display.
+    Supports multiple viewer types (text, PDF, image, code, media) and provides
+    unified interface for document loading, display, and interaction.
+
+    Features:
+    - Integrated header with metadata and actions
+    - Pluggable content viewers based on document type
+    - Async loading with progress tracking
+    - Error handling and recovery
+    - Zoom and navigation controls (where applicable)
+
+    Signals:
+        document_loaded: Document loaded successfully
+        document_loading_failed: Document loading failed
+        preview_requested: User clicked Preview button
+        attach_requested: User clicked Attach button
+        index_requested: User clicked Index button
+    """
+
+    document_loaded = Signal(str, dict)  # path, metadata
+    document_loading_failed = Signal(str, str)  # path, error message
+    preview_requested = Signal(str)  # path
+    attach_requested = Signal(str)  # path
+    index_requested = Signal(str)  # path
+
+    def __init__(self, parent: Optional[QWidget] = None):
+        """
+        Initialize document viewer
+
+        Args:
+            parent: Parent widget
+        """
+        super().__init__(parent)
+        self.setObjectName("document_viewer")
+
+        # Current document state
+        self._current_path: Optional[str] = None
+        self._current_metadata: Optional[Dict[str, Any]] = None
+        self._current_viewer: Optional[BaseViewer] = None
+
+        # Content viewers registry
+        self._viewers: Dict[str, BaseViewer] = {}
+        self._register_viewers()
+
+        # Initialize UI
+        self._setup_ui()
+        self._connect_signals()
+        self._apply_styles()
+
+    def _setup_ui(self):
+        """Setup main UI layout"""
+        layout = QVBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        # Header
+        self.header = DocumentViewerHeader()
+
+        # Content area (stacked widget for different viewer types)
+        self.content_area = QStackedWidget()
+        self.content_area.setObjectName("content_area")
+
+        # Loading overlay
+        self.loading_overlay = self._create_loading_overlay()
+
+        # Assemble layout
+        layout.addWidget(self.header)
+        layout.addWidget(self.content_area)
+
+        self.setLayout(layout)
+
+        # Set default empty state
+        self._show_empty_state()
+
+    def _create_loading_overlay(self) -> QWidget:
+        """Create loading overlay widget"""
+        overlay = QWidget(self)
+        overlay.setObjectName("loading_overlay")
+        overlay.hide()
+
+        overlay_layout = QVBoxLayout()
+        overlay_layout.setAlignment(Qt.AlignCenter)
+
+        self.loading_spinner = QLabel("⏳ Loading...")
+        self.loading_spinner.setObjectName("loading_spinner")
+        spinner_font = self.loading_spinner.font()
+        spinner_font.setPointSize(24)
+        self.loading_spinner.setFont(spinner_font)
+
+        overlay_layout.addWidget(self.loading_spinner)
+        overlay.setLayout(overlay_layout)
+
+        return overlay
+
+    def _register_viewers(self):
+        """Register available document viewers"""
+        # Note: In production, these would be imported and instantiated
+        # For now, we'll create placeholders
+        from .document_viewers.text import TextViewer
+        from .document_viewers.pdf import PdfViewer
+        from .document_viewers.image import ImageViewer
+        from .document_viewers.code import CodeViewer
+        from .document_viewers.media import MediaViewer
+
+        self._viewers = {
+            "text": TextViewer(),
+            "pdf": PdfViewer(),
+            "image": ImageViewer(),
+            "code": CodeViewer(),
+            "media": MediaViewer(),
+        }
+
+    def _connect_signals(self):
+        """Connect internal signals"""
+        # Header signals
+        self.header.preview_requested.connect(self._on_preview_requested)
+        self.header.attach_requested.connect(self._on_attach_requested)
+        self.header.index_requested.connect(self._on_index_requested)
+
+    def _apply_styles(self):
+        """Apply component styles"""
+        self.setStyleSheet("""
+            #document_viewer {
+                background-color: palette(base);
+            }
+            #content_area {
+                background-color: palette(base);
+                border: none;
+            }
+            #loading_overlay {
+                background-color: rgba(255, 255, 255, 0.9);
+            }
+            #loading_spinner {
+                color: palette(text);
+            }
+        """)
+
+    def load_document(self, path: str, metadata: Optional[Dict[str, Any]] = None):
+        """
+        Load document into viewer
+
+        Args:
+            path: Path to document file
+            metadata: Optional metadata (will be loaded if not provided)
+        """
+        self._current_path = path
+
+        # Show loading state
+        self._show_loading_state()
+
+        try:
+            from src.pygpt_net.core.document_processing_service import get_document_processing_service
+
+            service = get_document_processing_service()
+
+            # Get metadata if not provided
+            if metadata is None:
+                metadata = service.get_file_info(path)
+
+            if metadata:
+                self._current_metadata = metadata
+
+                # Update header
+                self.header.update_metadata(metadata)
+
+                # Get appropriate viewer
+                viewer = self._get_viewer_for_file(path)
+                if viewer:
+                    self._set_viewer(viewer)
+
+                    # Load content
+                    result = service.load_sync(path)
+
+                    if result.success:
+                        # Display content
+                        self._display_content(result)
+                        self.header.finish_loading()
+                        self.document_loaded.emit(path, metadata)
+                    else:
+                        # Show error
+                        error_msg = result.errors[0].message if result.errors else "Unknown error"
+                        self._show_error(error_msg)
+                        self.document_loading_failed.emit(path, error_msg)
+                else:
+                    # Unsupported format
+                    error_msg = f"Unsupported document format: {path}"
+                    self._show_error(error_msg)
+                    self.document_loading_failed.emit(path, error_msg)
+            else:
+                # Could not load metadata
+                error_msg = f"Could not load document metadata: {path}"
+                self._show_error(error_msg)
+                self.document_loading_failed.emit(path, error_msg)
+
+        except Exception as e:
+            error_msg = f"Error loading document: {str(e)}"
+            self._show_error(error_msg)
+            self.document_loading_failed.emit(path, error_msg)
+        finally:
+            self._hide_loading_state()
+
+    def load_document_async(
+        self,
+        path: str,
+        on_progress: Optional[Callable[[int], None]] = None,
+    ) -> str:
+        """
+        Load document asynchronously
+
+        Args:
+            path: Path to document file
+            on_progress: Optional progress callback
+
+        Returns:
+            Operation ID for tracking
+        """
+        self._current_path = path
+        self._show_loading_state()
+
+        from src.pygpt_net.core.document_processing_service import get_document_processing_service
+
+        service = get_document_processing_service()
+
+        def handle_progress(load_progress: LoadProgress):
+            """Handle progress updates"""
+            if on_progress:
+                percentage = int(load_progress.percentage or 0)
+                on_progress(percentage)
+            if load_progress.percentage is not None:
+                self.header.set_progress(int(load_progress.percentage))
+
+        def handle_complete(result: LoadResult):
+            """Handle loading completion"""
+            self._hide_loading_state()
+
+            if result.success:
+                # Display content
+                self._display_content(result)
+                self.header.finish_loading()
+
+                # Emit success signal
+                if self._current_metadata:
+                    self.document_loaded.emit(path, self._current_metadata)
+            else:
+                # Show error
+                error_msg = result.errors[0].message if result.errors else "Unknown error"
+                self._show_error(error_msg)
+                self.document_loading_failed.emit(path, error_msg)
+
+        def handle_error(error: LoadError):
+            """Handle loading errors"""
+            self._hide_loading_state()
+            self._show_error(error.message)
+            self.document_loading_failed.emit(path, error.message)
+
+        # Get metadata first
+        metadata = service.get_file_info(path)
+        if metadata:
+            self._current_metadata = metadata
+            self.header.update_metadata(metadata)
+
+            # Get viewer
+            viewer = self._get_viewer_for_file(path)
+            if viewer:
+                self._set_viewer(viewer)
+
+                # Start async load
+                op_id = service.load_async(
+                    source=path,
+                    on_progress=handle_progress,
+                    on_complete=handle_complete,
+                    on_error=handle_error,
+                )
+
+                return op_id
+            else:
+                error_msg = f"Unsupported document format: {path}"
+                self._show_error(error_msg)
+                self.document_loading_failed.emit(path, error_msg)
+                self._hide_loading_state()
+
+        return ""
+
+    def clear_document(self):
+        """Clear current document"""
+        self._current_path = None
+        self._current_metadata = None
+
+        if self._current_viewer:
+            self._current_viewer.clear()
+            self._current_viewer = None
+
+        self.header.clear()
+        self._show_empty_state()
+
+    def get_current_document(self) -> Optional[Dict[str, Any]]:
+        """
+        Get current document info
+
+        Returns:
+            Dict with path and metadata or None
+        """
+        if self._current_path and self._current_metadata:
+            return {
+                "path": self._current_path,
+                "metadata": self._current_metadata,
+            }
+        return None
+
+    def _get_viewer_for_file(self, path: str) -> Optional[BaseViewer]:
+        """Get appropriate viewer for file type"""
+        from pathlib import Path
+
+        file_path = Path(path)
+        ext = file_path.suffix.lower()
+
+        file_types = {
+            ".txt": "text",
+            ".md": "text",
+            ".log": "text",
+            ".csv": "text",
+            ".json": "code",
+            ".xml": "code",
+            ".py": "code",
+            ".js": "code",
+            ".html": "code",
+            ".css": "code",
+            ".pdf": "pdf",
+            ".jpg": "image",
+            ".jpeg": "image",
+            ".png": "image",
+            ".gif": "image",
+            ".svg": "image",
+            ".bmp": "image",
+            ".mp4": "media",
+            ".avi": "media",
+            ".mov": "media",
+            ".mp3": "media",
+            ".wav": "media",
+        }
+
+        viewer_type = file_types.get(ext, "text")
+        return self._viewers.get(viewer_type)
+
+    def _set_viewer(self, viewer: BaseViewer):
+        """Set current viewer"""
+        self._current_viewer = viewer
+
+        # Add to content area if not already there
+        if viewer.get_widget() not in [self.content_area.widget(i) for i in range(self.content_area.count())]:
+            self.content_area.addWidget(viewer.get_widget())
+
+        # Switch to this viewer
+        self.content_area.setCurrentWidget(viewer.get_widget())
+
+    def _display_content(self, result):
+        """Display loaded content in viewer"""
+        if not self._current_viewer or not self._current_path:
+            return
+
+        full_content = "".join(result.content)
+        self._current_viewer.load_from_data(
+            full_content.encode("utf-8") if isinstance(full_content, str) else full_content,
+            metadata=self._current_metadata,
+        )
+
+    def _show_loading_state(self):
+        """Show loading state"""
+        self.header.start_loading()
+
+    def _hide_loading_state(self):
+        """Hide loading state"""
+        self.header.finish_loading()
+
+    def _show_empty_state(self):
+        """Show empty state (no document loaded)"""
+        empty_widget = QWidget()
+        empty_layout = QVBoxLayout()
+        empty_layout.setAlignment(Qt.AlignCenter)
+
+        empty_label = QLabel("No document loaded")
+        empty_label.setObjectName("empty_label")
+        empty_font = empty_label.font()
+        empty_font.setPointSize(14)
+        empty_label.setFont(empty_font)
+        empty_label.setStyleSheet("color: palette(mid);")
+
+        empty_layout.addWidget(empty_label)
+        empty_widget.setLayout(empty_layout)
+
+        self.content_area.addWidget(empty_widget)
+        self.content_area.setCurrentWidget(empty_widget)
+
+    def _show_error(self, message: str):
+        """Show error message"""
+        self.header.show_error(message, severity="error")
+
+    def _on_preview_requested(self):
+        """Handle preview request"""
+        if self._current_path:
+            # Open in external viewer or new tab
+            self.preview_requested.emit(self._current_path)
+
+    def _on_attach_requested(self):
+        """Handle attach request"""
+        if self._current_path:
+            self.attach_requested.emit(self._current_path)
+
+    def _on_index_requested(self):
+        """Handle index request"""
+        if self._current_path:
+            self.index_requested.emit(self._current_path)
+
+
+# Enhanced DocumentViewerHeader integration
+class BaseViewer:
+    """Base class for document viewers - simplified for integration"""
+    def get_widget(self):
+        return QWidget()
+
+
+# ============================================================================
+# End of document_viewer.py
+# ============================================================================
+
+# Example usage
 if __name__ == "__main__":
     import sys
     from PySide6.QtWidgets import QApplication, QMainWindow
@@ -776,57 +1206,32 @@ if __name__ == "__main__":
 
     # Create test window
     window = QMainWindow()
-    window.setWindowTitle("DocumentViewerHeader Test")
-    window.resize(800, 200)
+    window.setWindowTitle("DocumentViewer Test")
+    window.resize(1000, 800)
 
-    # Create header
-    header = DocumentViewerHeader()
+    # Create full document viewer
+    viewer = DocumentViewer()
 
     # Connect signals
-    header.preview_requested.connect(lambda: print("Preview requested"))
-    header.attach_requested.connect(lambda: print("Attach requested"))
-    header.index_requested.connect(lambda: print("Index requested"))
-    header.more_actions_requested.connect(lambda: print("More actions requested"))
+    viewer.preview_requested.connect(lambda path: print(f"Preview: {path}"))
+    viewer.attach_requested.connect(lambda path: print(f"Attach: {path}"))
+    viewer.index_requested.connect(lambda path: print(f"Index: {path}"))
+    viewer.document_loaded.connect(lambda path, meta: print(f"Loaded: {path}"))
+    viewer.document_loading_failed.connect(lambda path, err: print(f"Failed: {path} - {err}"))
 
-    # Test metadata
-    test_metadata = {
-        'name': 'example_document.pdf',
-        'size': 2457600,  # 2.4 MB
-        'type': 'PDF Document',
-        'modified': datetime.now().timestamp(),
-        'indexed_in': ['default_index', 'project_docs']
-    }
+    # Test with example file (replace with actual file path)
+    # viewer.load_document("/path/to/test/document.pdf")
+    # or for async:
+    # viewer.load_document_async("/path/to/test/document.pdf")
 
-    header.update_metadata(test_metadata)
-
-    # Simulate loading progress
-    def simulate_loading():
-        header.start_loading()
-        progress = 0
-
-        def update_progress():
-            nonlocal progress
-            progress += 10
-            header.set_progress(progress)
-
-            if progress >= 100:
-                timer.stop()
-                header.finish_loading()
-
-        timer = QTimer()
-        timer.timeout.connect(update_progress)
-        timer.start(200)  # Update every 200ms
-
-    # Start loading simulation after 1 second
-    QTimer.singleShot(1000, simulate_loading)
-
-    # Test error display after 5 seconds
-    QTimer.singleShot(5000, lambda: header.show_error(
-        "Failed to load document: File not found",
-        "warning"
-    ))
-
-    window.setCentralWidget(header)
+    window.setCentralWidget(viewer)
     window.show()
+
+    print("DocumentViewer component ready for integration!")
+    print("Features:")
+    print("- DocumentViewerHeader with metadata, progress, actions")
+    print("- Multi-format content viewer support")
+    print("- Async loading with DocumentProcessingService")
+    print("- Error handling and state management")
 
     sys.exit(app.exec())
