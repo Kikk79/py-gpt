@@ -1664,6 +1664,13 @@ Documentation: https://pygpt.readthedocs.io/en/latest/plugins.html#mailer
 
 With the `MCP` plugin, you can connect **PyGPT** to remote tools exposed by `Model Context Protocol` servers (stdio, Streamable HTTP, or SSE). The plugin discovers available tools on your configured servers and publishes them to the model as callable commands with proper parameter schemas. You can whitelist/blacklist tools per server and optionally cache discovery results for speed.
 
+PyGPT also includes a standalone MCP server that exposes selected built-in plugin capabilities as MCP tools (useful if you want to call PyGPT-like tools from other MCP clients):
+
+- Run via stdio: `pygpt-mcp-plugins --transport stdio`
+- Run via HTTP: `pygpt-mcp-plugins --transport streamable-http --host 127.0.0.1 --port 8000`
+
+OpenAI-based tools require `OPENAI_API_KEY`. Telegram tools require `TELEGRAM_BOT_TOKEN`. Mouse/keyboard tools are destructive—run only in trusted environments.
+
 Documentation: https://pygpt.readthedocs.io/en/latest/plugins.html#mcp
 
 ## Mouse And Keyboard

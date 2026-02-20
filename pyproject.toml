@@ -128,6 +128,7 @@ pytest = "^7.4.3"
 
 [tool.poetry.scripts]
 pygpt = 'pygpt_net.app:run'
+pygpt-mcp-plugins = 'pygpt_net.mcp_servers.plugins_server:main'
 
 [build-system]
 requires = ["poetry-core"]
